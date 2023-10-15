@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/anandawira/seatalkbot"
@@ -35,8 +33,11 @@ func main() {
 
 	fmt.Println(client.AccessToken())
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGTERM, os.Interrupt)
+	err = client.SendPrivateMessage(context.Background(), "150001", seatalkbot.TextMessage("test message"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Message sent successfully")
 
-	<-quit
+	fmt.Println("Done")
 }
