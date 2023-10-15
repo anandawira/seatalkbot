@@ -11,3 +11,11 @@ type sendPrivateMessageReqBody struct {
 	EmployeeCode string          `json:"employee_code"`
 	Message      json.RawMessage `json:"message"`
 }
+
+type getGroupIDsRespBody struct {
+	Code             int    `json:"code"`
+	NextCursor       string `json:"next_cursor"`
+	JoinedGroupChats struct {
+		GroupIDs []string `json:"group_id"`
+	} `json:"joined_group_chats"`
+}

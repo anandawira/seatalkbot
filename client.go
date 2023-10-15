@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -15,8 +17,12 @@ import (
 	"github.com/anandawira/seatalkbot/helper"
 )
 
-// defaultHost is the default host to use on API calls when not set in the config.
-const defaultHost = "https://openapi.seatalk.io"
+const (
+	// defaultHost is the default host to use on API calls when not set in the config.
+	defaultHost = "https://openapi.seatalk.io"
+	// pageSize is the page size for each API call that uses pagination
+	pageSize = 50
+)
 
 // Client is a Seatalkbot API caller. Client must initialize access token and update it with a new one before expired.
 // You MUST call Close() on a client to avoid leaks, it will not be garbage-collected automatically when it passes out of scope.
@@ -24,6 +30,9 @@ const defaultHost = "https://openapi.seatalk.io"
 type Client interface {
 	// SendPrivateMessage send a private message to a user by employeeCode.
 	SendPrivateMessage(ctx context.Context, employeeCode string, message Message) error
+
+	// GetGroupIDs get list of group ids joined by the bot.
+	GetGroupIDs(ctx context.Context) ([]string, error)
 
 	// UpdateAccessToken gets new access token by using the credentials and store it in the client.
 	UpdateAccessToken(ctx context.Context) error
@@ -123,7 +132,7 @@ func (c *client) SendPrivateMessage(ctx context.Context, employeeCode string, me
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http response code not 200, response code: %d", resp.StatusCode)
+		return fmt.Errorf("http response code not 200, got: %d", resp.StatusCode)
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
@@ -132,10 +141,31 @@ func (c *client) SendPrivateMessage(ctx context.Context, employeeCode string, me
 	}
 
 	if code := gjson.Get(string(respBody), "code"); !code.Exists() || code.Int() != 0 {
-		return fmt.Errorf("code in response body is not exist or not 0")
+		return fmt.Errorf("code in response body is not exist or not 0, resp_body: %s", respBody)
 	}
 
 	return nil
+}
+
+// GetGroupIDs implements Client
+func (c *client) GetGroupIDs(ctx context.Context) ([]string, error) {
+	var groupIDs []string
+	var cursor string
+
+	for {
+		ids, nextCursor, err := c.getGroupIDs(ctx, cursor)
+		if err != nil {
+			return nil, err
+		}
+
+		groupIDs = append(groupIDs, ids...)
+
+		if nextCursor == "" {
+			break
+		}
+	}
+
+	return groupIDs, nil
 }
 
 // UpdateAccessToken implements Client
@@ -164,7 +194,7 @@ func (c *client) UpdateAccessToken(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New("status code not 200")
+		return fmt.Errorf("status code is not 200, got: %d", resp.StatusCode)
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
@@ -174,7 +204,7 @@ func (c *client) UpdateAccessToken(ctx context.Context) error {
 
 	accessToken := gjson.Get(string(respBody), "app_access_token")
 	if !accessToken.Exists() {
-		return fmt.Errorf("access token not exist. resp_body = %s", respBody)
+		return fmt.Errorf("access token not exist. resp_body: %s", respBody)
 	}
 
 	c.accessToken = accessToken.String()
@@ -193,6 +223,53 @@ func (c *client) Close() error {
 		c.stop()
 	}
 	return nil
+}
+
+func (c *client) getGroupIDs(ctx context.Context, cursor string) (groupIDs []string, nextCursor string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.host+"/messaging/v2/group_chat/joined", http.NoBody)
+	if err != nil {
+		return nil, "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+
+	q := url.Values{}
+	q.Set("page_size", strconv.Itoa(pageSize))
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("status code not 200, got: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	response := getGroupIDsRespBody{
+		Code: -1, // To know if the code is not found in the response body.
+	}
+	err = json.Unmarshal(respBody, &response)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if response.Code != 0 {
+		return nil, "", fmt.Errorf("error code is not 0, got: %d", response.Code)
+	}
+
+	return response.JoinedGroupChats.GroupIDs, response.NextCursor, nil
 }
 
 func (c *client) runAccessTokenScheduler(ctx context.Context) {
