@@ -22,6 +22,9 @@ const defaultHost = "https://openapi.seatalk.io"
 // You MUST call Close() on a client to avoid leaks, it will not be garbage-collected automatically when it passes out of scope.
 // It is safe to share a client amongst many users.
 type Client interface {
+	// SendPrivateMessage send a private message to a user by employeeCode.
+	SendPrivateMessage(ctx context.Context, employeeCode string, message Message) error
+
 	// UpdateAccessToken gets new access token by using the credentials and store it in the client.
 	UpdateAccessToken(ctx context.Context) error
 
@@ -93,6 +96,49 @@ func NewClient(config Config) (Client, error) {
 	return c, nil
 }
 
+// SendPrivateMessage implements Client
+func (c *client) SendPrivateMessage(ctx context.Context, employeeCode string, message Message) error {
+	reqBody, err := json.Marshal(sendPrivateMessageReqBody{
+		EmployeeCode: employeeCode,
+		Message:      message.Message(),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+"/messaging/v2/single_chat", bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http response code not 200, response code: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if code := gjson.Get(string(respBody), "code"); !code.Exists() || code.Int() != 0 {
+		return fmt.Errorf("code in response body is not exist or not 0")
+	}
+
+	return nil
+}
+
+// UpdateAccessToken implements Client
 func (c *client) UpdateAccessToken(ctx context.Context) error {
 	reqBody, err := json.Marshal(accessTokenReqBody{
 		AppID:     c.appID,
@@ -136,10 +182,12 @@ func (c *client) UpdateAccessToken(ctx context.Context) error {
 	return nil
 }
 
+// AccessToken implements Client
 func (c *client) AccessToken() string {
 	return c.accessToken
 }
 
+// Close implements Client
 func (c *client) Close() error {
 	if c.stop != nil {
 		c.stop()
