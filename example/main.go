@@ -24,20 +24,28 @@ func main() {
 
 	defer client.Close()
 
-	fmt.Println(client.AccessToken())
+	fmt.Println("Access token:", client.AccessToken())
 
 	err = client.UpdateAccessToken(context.Background())
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(client.AccessToken())
+	fmt.Println("Access token:", client.AccessToken())
 
 	err = client.SendPrivateMessage(context.Background(), "150001", seatalkbot.TextMessage("test message"))
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println("Message sent successfully")
+
+	groupIDs, err := client.GetGroupIDs(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Group IDs:", groupIDs)
 
 	fmt.Println("Done")
 }
