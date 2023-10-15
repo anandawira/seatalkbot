@@ -7,24 +7,14 @@ type Message interface {
 	Message() json.RawMessage
 }
 
-var _ Message = TextMessage("")
-
-// TextMessage wraps string and implements Message
-type TextMessage string
-
-func (t TextMessage) Message() json.RawMessage {
-	b, err := json.Marshal(textMessage{
+func TextMessage(content, quotedMessageID string) Message {
+	return textMessage{
 		Tag: "text",
 		Text: struct {
 			Content string `json:"content"`
-		}{Content: string(t)},
-	})
-
-	if err != nil {
-		panic(err)
+		}{Content: content},
+		QuotedMessageID: quotedMessageID,
 	}
-
-	return b
 }
 
 type textMessage struct {
@@ -32,4 +22,15 @@ type textMessage struct {
 	Text struct {
 		Content string `json:"content"`
 	} `json:"text"`
+	QuotedMessageID string `json:"quoted_message_id,omitempty"`
+}
+
+func (t textMessage) Message() json.RawMessage {
+	b, err := json.Marshal(t)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return b
 }

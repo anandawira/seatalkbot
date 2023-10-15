@@ -33,10 +33,11 @@ type Client interface {
 
 	// GetGroupIDs get list of group ids joined by the bot.
 	GetGroupIDs(ctx context.Context) ([]string, error)
+	// SendGroupMessage send a message to a group by groupID.
+	SendGroupMessage(ctx context.Context, groupID string, message Message) (messageID string, err error)
 
 	// UpdateAccessToken gets new access token by using the credentials and store it in the client.
 	UpdateAccessToken(ctx context.Context) error
-
 	// AccessToken gets the underlying access token inside the client.
 	// It might be used to implement your own API caller that's not yet supported by this library.
 	AccessToken() string
@@ -166,6 +167,48 @@ func (c *client) GetGroupIDs(ctx context.Context) ([]string, error) {
 	}
 
 	return groupIDs, nil
+}
+
+// SendGroupMessage implements Client
+func (c *client) SendGroupMessage(ctx context.Context, groupID string, message Message) (messageID string, err error) {
+	reqBody, err := json.Marshal(sendGroupMessageReqBody{
+		GroupID: groupID,
+		Message: message.Message(),
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+"/messaging/v2/group_chat", bytes.NewReader(reqBody))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("http response code not 200, got: %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if code := gjson.Get(string(respBody), "code"); !code.Exists() || code.Int() != 0 {
+		return "", fmt.Errorf("code in response body is not exist or not 0, resp_body: %s", respBody)
+	}
+
+	return gjson.Get(string(respBody), "message_id").String(), nil
 }
 
 // UpdateAccessToken implements Client
