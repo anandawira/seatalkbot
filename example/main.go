@@ -33,7 +33,7 @@ func main() {
 
 	fmt.Println("Access token:", client.AccessToken())
 
-	err = client.SendPrivateMessage(context.Background(), "150001", seatalkbot.TextMessage("test message"))
+	err = client.SendPrivateMessage(context.Background(), "150001", seatalkbot.TextMessage("test message", ""))
 	if err != nil {
 		panic(err)
 	}
@@ -46,6 +46,14 @@ func main() {
 	}
 
 	fmt.Println("Group IDs:", groupIDs)
+
+	for _, groupID := range groupIDs {
+		messageID, err := client.SendGroupMessage(context.Background(), groupID, seatalkbot.TextMessage("test message", ""))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("Message sent successfully. group_id: %s, message_id: %s", groupID, messageID)
+	}
 
 	fmt.Println("Done")
 }

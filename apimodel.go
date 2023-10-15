@@ -12,6 +12,11 @@ type sendPrivateMessageReqBody struct {
 	Message      json.RawMessage `json:"message"`
 }
 
+type sendGroupMessageReqBody struct {
+	GroupID string          `json:"group_id"`
+	Message json.RawMessage `json:"message"`
+}
+
 type getGroupIDsRespBody struct {
 	Code             int    `json:"code"`
 	NextCursor       string `json:"next_cursor"`
